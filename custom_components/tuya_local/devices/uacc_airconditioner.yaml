@@ -1,0 +1,61 @@
+name: Air Conditioner
+products:
+  - id: ocifojva
+    name: Zigbee Air Conditioner UACC-B-XX-TZ-N
+
+primary_entity:
+  entity: climate
+  translation_key: thermostat
+  icon: "mdi:air-conditioner"
+  dps:
+    - id: 1
+      name: hvac_mode
+      type: boolean
+      mapping:
+        - dps_val: false
+          value: "off"
+        - dps_val: true
+          constraint: mode
+          conditions:
+            - dps_val: hot
+              value: heat
+            - dps_val: cold
+              value: cool
+            - dps_val: wind
+              value: fan_only
+            - dps_val: wet
+              value: dry
+    - id: 2
+      name: temperature
+      type: integer
+      unit: "℃"
+      range:
+        min: 16
+        max: 32
+    - id: 3
+      name: current_temperature
+      type: integer
+    - id: 4
+      name: mode
+      type: string
+      mapping:
+        - dps_val: cold
+          value: cold
+        - dps_val: hot
+          value: hot
+        - dps_val: wind
+          value: wind
+        - dps_val: wet
+          value: wet
+    - id: 5
+      type: string
+      name: fan_mode
+      mapping:
+        - dps_val: "auto"
+          value: auto
+        - dps_val: "high"
+          value: high
+        - dps_val: "middle"
+          value: middle
+        - dps_val: "low"
+          value: low
