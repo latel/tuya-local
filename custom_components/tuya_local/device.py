@@ -144,7 +144,9 @@ class TuyaLocalDevice(object):
         self._shutdown_listener = self._hass.bus.async_listen_once(
             EVENT_HOMEASSISTANT_STOP, self.async_stop
         )
-        self._refresh_task = self._hass.async_create_task(self.receive_loop())
+        self._refresh_task = asyncio.run_coroutine_threadsafe(
+            self.receive_loop(), self._hass.loop
+        )
 
     def start(self):
         if self._hass.is_stopping:
@@ -209,13 +211,13 @@ class TuyaLocalDevice(object):
 
                     for entity in self._children:
                         # let entities trigger off poll contents directly
-                        entity.on_receive(poll)
+                        entity.on_receive(poll, full_poll)
                         # clear non-persistant dps that were not in a full poll
                         if full_poll:
                             for dp in entity._config.dps():
                                 if not dp.persist and dp.id not in poll:
                                     self._cached_state.pop(dp.id, None)
-                        entity.async_write_ha_state()
+                        entity.schedule_update_ha_state()
                 else:
                     _LOGGER.debug(
                         "%s received non data %s",
@@ -371,22 +373,22 @@ class TuyaLocalDevice(object):
                 best_quality = quality
                 best_match = config
 
-        if best_match is None:
-            _LOGGER.warning(
-                "Detection for %s with dps %s failed",
-                self.name,
-                log_json(cached_state),
-            )
-            return None
+        if best_match:
+            return best_match.config_type
 
-        return best_match.config_type
+        _LOGGER.warning(
+            "Detection for %s with dps %s failed",
+            self.name,
+            log_json(cached_state),
+        )
 
     async def async_refresh(self):
         _LOGGER.debug("Refreshing device state for %s", self.name)
-        await self._retry_on_failed_connection(
-            lambda: self._refresh_cached_state(),
-            f"Failed to refresh device state for {self.name}.",
-        )
+        if self.should_poll:
+            await self._retry_on_failed_connection(
+                lambda: self._refresh_cached_state(),
+                f"Failed to refresh device state for {self.name}.",
+            )
 
     def get_property(self, dps_id):
         cached_state = self._get_cached_state()
@@ -421,12 +423,19 @@ class TuyaLocalDevice(object):
                     # Clear non-persistant dps that were not in the poll
                     if not dp.persist and dp.id not in new_state.get("dps", {}):
                         self._cached_state.pop(dp.id, None)
-                entity.async_write_ha_state()
+                entity.schedule_update_ha_state()
         _LOGGER.debug(
             "%s refreshed device state: %s",
             self.name,
             log_json(new_state),
         )
+        if "Err" in new_state:
+            _LOGGER.warning(
+                "%s protocol error %s: %s",
+                self.name,
+                new_state.get("Err"),
+                new_state.get("Error", "message not provided"),
+            )
         _LOGGER.debug(
             "new state (incl pending): %s",
             log_json(self._get_cached_state()),
